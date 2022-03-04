@@ -1,0 +1,173 @@
+---
+title: "Spatial pattern analyses of disease intensity data"
+author: "Daniel Heck, Kaique Alves, and Sarah Pethybridge"
+date: "1/18/2022"
+output: 
+  html_document:
+    number_sections: true 
+    df_print: paged
+    theme: cosmo
+    toc: true
+    toc_float:
+      collapsed: yes
+    self_contained: yes
+---
+
+# Packages
+
+```{r warning=F}
+# install.packages("pacman")  # Install the package in your computer
+library(pacman) # Load the package in R environment
+p_load(epiphy, tidyverse, cowplot, patchwork) # Install and load additional package in R
+```
+
+
+# Data
+
+*citrus_ctc* datasets contains information about the **incidence** of citrus tristeza virus (CTV) disease in three citrus fields.
+```{r warning=F}
+iv3 <- citrus_ctv$IVI3and4
+head(iv3)
+tail(iv3)
+str(iv3)
+```
+On these two examples, *x* and *y* correspond to the spatial coordinates of the sampling units distributed in a regular two-dimensional grid. 
+
+ - *x* and *y* are the row id and the within-row sampling unit id, respectively. 
+ 
+ - *t* variable stands for the assessment time or date. 
+ 
+ - *i* variable corresponds to the number of recorded individuals (presence or absence of symptomatics plants) in each sampling unit. 
+ 
+ - *n*, which is only there in incidence data sets, is the total number of individuals in a sampling unit. 
+
+As in the raw CTV incidence data set, *n* = 1,  means that each sampling unit contains only one plant and so *i* can only be equal to 0 (the plant is healthy) or 1 (the plant is diseased).
+
+## handling
+```{r warning=F}
+inc <- incidence(iv3)
+inc
+plot(inc, tile = F)
+
+inc4 <- clump(inc, unit_size = c(x = 2, y = 2))
+plot(inc4, tile = F, size = 4)
+```
+
+```{r warning=F}
+inc4_91 <- split(inc4, by = "t")[[1]]
+plot(inc4_91)
+
+inc4_93 <- split(inc4, by = "t")[[3]]
+plot(inc4_93)
+```
+
+
+# Statistical methods
+
+## Aggregation indices
+```{r warning=F}
+inc4_91_idx <- agg_index(inc4_91)
+chisq.test(inc4_91_idx)
+```
+
+```{r warning=F}
+inc4_93_idx <- agg_index(inc4_93)
+chisq.test(inc4_93_idx)
+```
+
+## Distribution fitting
+```{r warning=F}
+inc4_91_dist <- fit_two_distr(inc4_91)
+summary(inc4_91_dist)
+```
+
+```{r warning=F}
+inc4_93_dist <- fit_two_distr(inc4_93)
+summary(inc4_93_dist)
+```
+
+```{r warning=F}
+dist_91 <- plot(inc4_91_dist)
+dist_93 <- plot(inc4_93_dist)
+```
+
+## Binary power law
+
+### Incidence dataset
+CTV incidence data for three orchards in eastern Spain reported for consecutive years.
+
+```{r warning=F, echo=F}
+inc6_spl <- split(inc4, unit_size = c(x = 3, y = 2))
+inc_plaw <- power_law(inc6_spl)
+coef(summary(inc_plaw))
+bpl <- plot(inc_plaw)
+```
+
+### Count dataset
+
+**Counts** of 554 aphids of the species *Sitobion avenae*, sampled on 28 June 1996 in a 250 x 180-m field of winter wheat near Wimborne, Dorset, UK. The 63 sampling units, made of the inspection of five tillers each, were located on a 9 x 7 rectangular grid at intervals of 30 m.
+
+```{r warning=F, echo=F}
+coun <- count_data(arthropods[arthropods$x <= 6, ])
+cou <- split(coun, unit_size = c(x = 3, y = 3))
+cou_plaw <- power_law(cou)
+coef(summary(cou_plaw))
+tpl <- plot(cou_plaw)
+```
+
+```{r}
+bpl+tpl
+```
+
+
+## Spatial hierarchy
+```{r error=F, warning=F}
+plot(inc4_91)
+plot(threshold(inc4_91))
+
+incall_low <- split(inc4, unit_size = c(x = 3, y = 2))
+incall_high <- lapply(incall_low, threshold)
+incall_sphier <- spatial_hier(incall_low, incall_high)
+
+plot(incall_sphier)
+```
+
+## SADIE
+```{r error=F, warning=F, message=F}
+iv3_m <- iv3 %>% 
+  filter(t == 1991) %>%
+  mutate(xm = x*5, ym = y*5)
+head(iv3_m)
+str(iv3_m)
+
+inc_m <- incidence(iv3_m, mapping(x = xm, y = ym))
+plot(inc_m)
+
+res <- sadie(inc_m, nperm = 10, index = "all")
+
+summary(res)
+plot(res)
+plot(res, isoclines = TRUE)
+```
+
+```{r error=F, warning=F}
+iv93_m <- iv3 %>% 
+  filter(t == 1993) %>%
+  mutate(xm = x*5, ym = y*5)
+head(iv93_m)
+str(iv93_m)
+
+inc_m <- incidence(iv93_m, mapping(x = xm, y = ym))
+plot(inc_m)
+
+res93 <- sadie(inc_m, nperm = 10, index = "all")
+
+summary(res93)
+plot(res93)
+plot(res93, isoclines = TRUE)
+```
+
+
+
+# Reference
+https://chgigot.github.io/epiphy/articles/epiphy.html
