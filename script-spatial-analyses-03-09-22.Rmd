@@ -207,7 +207,7 @@ plot(cou_t3)
 ```
 
 
-## SADIE
+### SADIE
 ```{r}
 res <- sadie(cou_t3, nperm = 1000)
 summary(res)
