@@ -1,0 +1,225 @@
+---
+title: "Spatial pattern analyses of disease incidence data: "
+author: "Daniel Heck, Kaique Alves, and Sarah Pethybridge"
+date: "1/18/2022"
+output: 
+  html_document:
+    number_sections: true 
+    df_print: paged
+    theme: cosmo
+    toc: true
+    toc_float:
+      collapsed: yes
+    self_contained: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+# Packages
+
+```{r warning=F}
+# install.packages("epiphy")  # Install the package in your computer
+# install.packages("tidyverse")
+library(epiphy) # Load the package in R environment
+library(tidyverse)
+```
+
+
+# Data
+
+*citrus_ctc* datasets contains information about the **incidence** of citrus tristeza virus (CTV) disease of three orchards in eastern Spain for consecutive years.
+
+We will be working with one field named **IVI3and4**.
+```{r warning=F}
+iv3 <- citrus_ctv$IVI3and4
+iv3
+str(iv3)
+```
+Here, *x* and *y* correspond to the spatial coordinates of the sampling units distributed in a regular two-dimensional grid. 
+
+ - *x* and *y* are the row (18) id and the within-row (12) sampling unit id, respectively. 
+ 
+ - *t* variable stands for the assessment time or date. 
+ 
+ - *i* variable corresponds to the number of recorded individuals (presence or absence of symptomatics plants) in each sampling unit. 
+ 
+ - *n* is the total number of individuals in a sampling unit. 
+
+As in the raw CTV incidence data set, *n* = 1,  means that each sampling unit contains only one plant and so *i* can only be equal to 0 (the plant is healthy) or 1 (the plant is diseased).
+
+## handling
+```{r warning=F}
+inc <- incidence(iv3)
+inc
+plot(inc, tile = F)
+```
+
+The `clump` function is used to combine the individuals in larger sampling units. 
+```{r}
+inc4 <- clump(inc, unit_size = c(x = 2, y = 2))
+plot(inc4, tile = F, size = 6)
+```
+
+
+```{r warning=F}
+inc4_91 <- split(inc4, by = "t")[[1]]
+inc4_94 <- split(inc4, by = "t")[[4]]
+```
+
+
+## incidence
+
+The incidence in the orchards can be calculated by: 
+$$\hat{y}=\sum_{i}y/nN$$
+```{r}
+(y_91 <- sum(inc4_91$data$i)/(inc4_91$data$n[1]*length(inc4_91$data$n)))
+
+(y_94 <- sum(inc4_94$data$i)/(inc4_94$data$n[1]*length(inc4_94$data$n)))
+```
+
+|Orchard | **y**     | 
+|--------|-----------|
+|IV_1991 |   0.204   |
+|IV_1994 |   0.629   |
+
+
+
+# Statistical methods
+
+## Dispersion index (*D*)
+
+Fisher's index of aggregation. In case of a count, this index corresponds to the ratio of the observed variance to the observed mean, and this is why this index is also known as the variance to mean ratio. For a binary variable, a similar index can be calculated using instead the ratio of the observed variance to the theoretical variance if data follow a binomial law (i.e. a reference distribution for a random pattern of individuals within sampling units).
+
+$$H_0 = 1$$
+
+```{r warning=F}
+(inc4_91_idx <- agg_index(inc4_91))
+chisq.test(inc4_91_idx)
+```
+P-value = 0.079. The null hypothesis was not rejected (*P* > 0.05). 
+
+```{r warning=F}
+(inc4_94_idx <- agg_index(inc4_94))
+chisq.test(inc4_94_idx)
+```
+P-value = 0.012. The null hypothesis was rejected (*P* < 0.05). 
+
+Table 3.1. Dispersion index estimated for an orchard assessed for disease incidence of Citrus Tristeza Virus in 1991 and 1994.
+
+|Orchard | **D**     | P-value | Result (aggregated or random)|
+|--------|-----------|---------|------------------------------|
+|IV_1991 |   1.28    |  0.079  |                              |
+|IV_1994 |   1.49    |  0.012  |                              |
+
+**Results interpretation:** The *IVI3and4* orchard assessed in 1991 can be considered as a **random** and the the same field assessed in 1994 can be considered **aggregated**.
+
+
+## Distribution fitting
+
+Different distributions may be used depending on the kind of provided data. By default, the Poisson and negative binomial distributions are fitted to count data, whereas the binomial and beta-binomial distributions are used with incidence data. Either Randomness assumption (Poisson or binomial distributions) or aggregation assumption (negative binomial or beta-binomial) are made, and then,  goodness-of-fit comparison of both distributions is made using a log-likelihood ratio (LRS) test statistic. The LRS has a $\chi^2$ distribution with one degree of freedom under the null hypothesis of no difference between the two log-likelihoods (i.e., the beta-binomial distribution does not fit the data better than the binomial).
+
+
+```{r warning=F}
+inc4_91_dist <- fit_two_distr(inc4_91)
+summary(inc4_91_dist)
+dist_91 <- plot(inc4_91_dist)
+```
+
+```{r warning=F}
+inc4_94_dist <- fit_two_distr(inc4_94)
+summary(inc4_94_dist)
+dist_94 <- plot(inc4_94_dist)
+```
+
+To interpret the LRS test, we will retrieve the P-value by: 
+```{r warning=F}
+(LRS_iv3_91 <- inc4_91_dist$llr$`Pr(>Chisq)`[2])
+(LRS_iv3_94 <- inc4_94_dist$llr$`Pr(>Chisq)`[2])
+```
+
+Table 3.2. Distribution fitting parameters estimated for an orchard assessed for disease incidence of Citrus Tristeza Virus in 1991 and 1994.
+
+|Orchard | $\pi$ (binomial)   | $p$ (beta) | $\theta$ (beta)  | LRS (P-value)   | Result (Binomial or beta-binomial)|
+|--------|--------------------|------------|------------------|-----------------|-----------------------------------|
+|IV_1991 |    0.203           |   0.204    |    0.080         |     0.181       |                                   |
+|IV_1994 |    0.629           |   0.627    |    0.171         |     0.014       |                                   |
+
+
+**Results interpretation:** The binomial distribution better fitted the *IVI3and4* orchard assessed in 1991, which suggest a **random** pattern. The beta-binomial distribution better fitted the orchard assessed in 1994 suggesting **aggregation**.
+
+## Binary power law
+
+The power law describes the relationship between the observed variance of individuals within a data set ($s^2$) and the corresponding variance under the assumption of no aggregation. It can be expressed under its logarithmic form as: $$log(s^2) = log(a) + b log(Y),$$ with:
+
+$Y = p$  in the case of count data (Taylor's power law).
+
+$Y = p(1 - p)$  in the case of incidence data (binary power law).
+
+$p$  corresponds to the mean proportion of recorded individuals in case of incidence data, and the absolute value in case of count data
+
+The `power_law` function assesses the overall degree of heterogeneity in a collection of data sets at the sampling-unit scale.
+
+### Incidence dataset
+
+For the sake of illustration, the incidence of CTV will be splitted into data sets of 9 sampling units each (3 rows × 3 sampling units × 1 recording date) before performing binary power law analysis on this data set in order to simulate a collection of different data sets.
+
+```{r warning=F}
+plot(inc4, tile = F, size=6)
+inc9_spl <- split(inc4, unit_size = c(x = 3, y = 3))
+inc_bpl <- power_law(inc9_spl)
+summary(inc_bpl)
+plot(inc_bpl)
+```
+
+
+Table 3.3. Binary power law parameters estimated for an orchard assessed for disease incidence of Citrus Tristeza Virus from 1991 to 1994.
+
+|Orchard | log(**A**) | **b** | Result                                                  |
+|--------|------------|-------|---------------------------------------------------------|
+|IVI3and4|   4.106    | 2.301 |                                                         |
+
+
+
+### Count dataset
+
+A sampling unit was made of a pitfall to collect arthropods in a field of organic winter wheat, near Wimborne, Dorset, UK in 1996. The sampling units were located on a 9 x 7 rectangular grid at intervals of 30 m. There were six sampling dates.
+
+```{r warning=F}
+art <- count_data(arthropods)
+tpl <- plot(art)
+count_art <- split(art, unit_size = c(x = 7, y = 3))
+(count_plaw <- power_law(count_art))
+summary(count_plaw)
+plot(count_plaw)
+```
+
+## SADIE
+
+
+### Count Data
+```{r}
+arthropods_t6 <- arthropods %>% 
+  filter(t == 6)
+
+cou_t3 <- epiphy::count(arthropods_t6, epiphy::mapping(x = xm, y = ym, t = t, i = i))
+
+plot(cou_t3)
+```
+
+
+## SADIE
+```{r}
+res <- sadie(cou_t3, nperm = 1000)
+summary(res)
+```
+
+
+### Ploting spatial pattern
+```{r}
+plot(res)
+plot(res, isoclines = TRUE)
+```
+
+
+# Reference
+https://chgigot.github.io/epiphy/articles/epiphy.html
